@@ -1,4 +1,4 @@
-package com.example.hankwu.decodetoglsurface;
+package com.example.hankwu.syncmultivideoplayer;
 
 import android.app.ActionBar;
 import android.app.Activity;

@@ -1,4 +1,4 @@
-package com.example.hankwu.decodetoglsurface;
+package com.example.hankwu.syncmultivideoplayer;
 
 import android.media.MediaCodec;
 import android.os.Handler;
@@ -40,25 +40,17 @@ public class ShareClock {
         for(int i=0;i<4;i++) {
             mutexs[i] = new Semaphore(1);
         }
-        displayHandler.postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                bGo = false;
-                bCanUpdate = false;
-                if(MediaPlayerController.mediaPlayerControllerSingleton.checkCanDisplay()) {
-                    while (!MediaPlayerController.mediaPlayerControllerSingleton.isAllOnGo()) {
-                        //Log.d("HANK", "AAA");
-                    }
-                    bGo = true;
-//                    while (!MediaPlayerController.mediaPlayerControllerSingleton.isAllGoDone()) {
-//                        //Log.d("HANK", "AAA");
-//                    }
-                    bCanUpdate = true;
-
-                }
-                displayHandler.postDelayed(this,5);
-            }
-        },1000);
+//        displayHandler.postDelayed(new Runnable() {
+//            @Override
+//            public void run() {
+//                bGo = false;
+//                bCanUpdate = false;
+//                if(MediaPlayerController.mediaPlayerControllerSingleton.DisplayIfItCan()) {
+//
+//                }
+//                displayHandler.postDelayed(this,5);
+//            }
+//        },1000);
     }
 
     public ShareClock() {

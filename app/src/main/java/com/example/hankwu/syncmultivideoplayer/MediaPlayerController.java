@@ -1,4 +1,4 @@
-package com.example.hankwu.decodetoglsurface;
+package com.example.hankwu.syncmultivideoplayer;
 
 import android.graphics.SurfaceTexture;
 import android.media.MediaPlayer;
@@ -14,53 +14,33 @@ public class MediaPlayerController {
     private MediaCodecPlayer[] mps = null;
     private int number_of_play = 0;
     public  SurfaceTexture[] stss = null;
-    public int frameAvailableCounter = 0;
 
     public void setSurfaceTextures(SurfaceTexture[] sts) {
         number_of_play = sts.length;
-        //mps = new MediaPlayer[number_of_play];
         mps = new MediaCodecPlayer[number_of_play];
-        stss = sts;
-
-
-
 
         for(int i=0;i<number_of_play;i++) {
             mps[i] = new MediaCodecPlayer();
             mps[i].setIndex(i);
             Surface surface = new Surface(sts[i]);
             mps[i].setSurface(surface);
-            //surface.release();
-        }
-
-        for(int i=0;i<number_of_play;i++) {
-            stss[i].setOnFrameAvailableListener(new SurfaceTexture.OnFrameAvailableListener() {
-                @Override
-                public void onFrameAvailable(SurfaceTexture surfaceTexture) {
-                    //surfaceTexture.updateTexImage();
-                    frameAvailableCounter++;
-                }
-            });
         }
 
     }
 
-    public boolean checkCanDisplay() {
+    public boolean DisplayIfItCan() {
+
+        final long time = System.currentTimeMillis();
+
         for(int i=0;i<number_of_play;i++) {
-            if(!mps[i].canDisplay()) {
+            if(!mps[i].canDisplay(time)) {
                 return false;
             }
         }
 
-        final long time = System.currentTimeMillis();
         for(int i=0;i<number_of_play;i++) {
             final int j = i;
-            new Thread(new Runnable() {
-                @Override
-                public void run() {
-                    mps[j].display(time);
-                }
-            }).start();
+            mps[j].display(time);
         }
         return true;
     }
@@ -104,22 +84,6 @@ public class MediaPlayerController {
         }
     }
 
-    public boolean isAllOnGo() {
-        for(int i=0;i<number_of_play;i++) {
-            if(!mps[i].onGo) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    public boolean isAllGoDone() {
-        if(frameAvailableCounter==4) {
-            frameAvailableCounter = 0;
-            return true;
-        }
-        return false;
-    }
 
 
 }

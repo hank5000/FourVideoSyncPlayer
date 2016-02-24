@@ -1,4 +1,4 @@
-package com.example.hankwu.decodetoglsurface;
+package com.example.hankwu.syncmultivideoplayer;
 
 
 import java.io.File;
@@ -44,7 +44,6 @@ class VideoSurfaceView extends GLSurfaceView {
         setEGLContextClientVersion(2);
         mRenderer = new VideoRender(context);
         setRenderer(mRenderer);
-
     }
 
     @Override
@@ -165,28 +164,38 @@ class VideoSurfaceView extends GLSurfaceView {
 
         int Counter = 0;
         long time = -1;
+        boolean bShowFPS = true;
+
+        boolean bNeedUpdate = false;
+        boolean bNeedWaitUpdate = false;
         @Override
         public void onDrawFrame(GL10 glUnused) {
 
-            if(ShareClock.shareClock.bCanUpdate) {
-                Counter++;
-
-                time = System.nanoTime();
-
-                if((System.nanoTime()-time)>= 1000000000) {
-                    Log.d("HANK","FPS:"+Counter);
-                    Counter = 0;
-                    time = System.nanoTime();
+            if(bNeedWaitUpdate) {
+                while(!bNeedUpdate)
+                {
 
                 }
+                for (int i=0;i< number_of_play;i++) {
+                    mSurfaceTextures[i].updateTexImage();
+                    mSurfaceTextures[i].getTransformMatrix(mSTMatrix);
+                    mSurfaceTextures[i].getTimestamp();
+                }
+                bNeedWaitUpdate = false;
 
+
+                if(bShowFPS) {
+                    Counter++;
+                    if (time == -1)
+                        time = System.nanoTime();
+                    if ((System.nanoTime() - time) >= 1000000000) {
+                        Log.d("HANK", "FPS:" + Counter);
+                        Counter = 0;
+                        time = System.nanoTime();
+                    }
+                }
 
                 for (int i = 0; i < number_of_play; i++) {
-                    mSurfaceTextures[i].updateTexImage();
-                    mSurfaceTextures[i].getTimestamp();
-
-//                GLES20.glClearColor(0.0f, 1.0f, 0.0f, 1.0f);
-//                GLES20.glClear(GLES20.GL_DEPTH_BUFFER_BIT | GLES20.GL_COLOR_BUFFER_BIT);
 
                     GLES20.glUseProgram(mProgram);
                     checkGlError("glUseProgram");
@@ -218,14 +227,40 @@ class VideoSurfaceView extends GLSurfaceView {
                     checkGlError("glDrawArrays");
                 }
                 GLES20.glFinish();
+
+
+            } else {
+                //
+                // trigger display
+                //
+                if(MediaPlayerController.mediaPlayerControllerSingleton.DisplayIfItCan()) {
+
+                    bNeedWaitUpdate = true;
+                }
             }
+
+
         }
+
         int Width = 0;
         int Height= 0;
         @Override
         public void onSurfaceChanged(GL10 glUnused, int width, int height) {
             Width = width;
             Height = height;
+        }
+
+        public void onFrameAvailable(SurfaceTexture surfaceTexture) {
+            //surfaceTexture.updateTexImage();
+            //surfaceTexture.getTransformMatrix();
+            int j = -1;
+            for(int i=0;i<number_of_play;i++) {
+                if(surfaceTexture==mSurfaceTextures[i]) {
+                    j = i;
+                    break;
+                }
+            }
+            Log.d("HANK","index:"+j+" is available!");
         }
 
         @Override
@@ -257,7 +292,6 @@ class VideoSurfaceView extends GLSurfaceView {
                 throw new RuntimeException("Could not get attrib location for uSTMatrix");
             }
 
-
             GLES20.glGenTextures(number_of_play, textures, 0);
 
             for(int i=0;i<number_of_play;i++) {
@@ -275,10 +309,12 @@ class VideoSurfaceView extends GLSurfaceView {
              * Create the SurfaceTexture and pass it to the MediaPlayer
              */
                 mSurfaceTextures[i] = new SurfaceTexture(mTextureID);
+                mSurfaceTextures[i].setOnFrameAvailableListener(new FrameAvailable(i),ShareClock.shareClock.displayHandler);
             }
 
             // MediaPlayerController part
             MediaPlayerController.mediaPlayerControllerSingleton.setSurfaceTextures(mSurfaceTextures);
+
             try {
                 String[] path = new String[number_of_play];
                 for(int i=0;i<number_of_play;i++) {
@@ -291,11 +327,6 @@ class VideoSurfaceView extends GLSurfaceView {
                 Log.d("HANK",e.toString());
                 e.printStackTrace();
             }
-
-        }
-
-        synchronized public void onFrameAvailable(SurfaceTexture surface) {
-            //updateSurface = true;
         }
 
         private int loadShader(int shaderType, String source) {
@@ -344,6 +375,8 @@ class VideoSurfaceView extends GLSurfaceView {
             return program;
         }
 
+        boolean[] checkArray = new boolean[4];
+
         private void checkGlError(String op) {
             int error;
             while ((error = GLES20.glGetError()) != GLES20.GL_NO_ERROR) {
@@ -352,136 +385,42 @@ class VideoSurfaceView extends GLSurfaceView {
             }
         }
 
-    }
+        int frameAvailableCounter = 0;
+        int[] displayFrameCount = new int[4];
+        long[] frameAvailableTime = new long[4];
 
-
-
-    private static class CodecInputSurface {
-        private static final int EGL_RECORDABLE_ANDROID = 0x3142;
-
-        private EGLDisplay mEGLDisplay = EGL14.EGL_NO_DISPLAY;
-        private EGLContext mEGLContext = EGL14.EGL_NO_CONTEXT;
-        private EGLSurface mEGLSurface = EGL14.EGL_NO_SURFACE;
-
-        private Surface mSurface;
-
-        /**
-         * Creates a CodecInputSurface from a Surface.
-         */
-        public CodecInputSurface(Surface surface) {
-            if (surface == null) {
-                throw new NullPointerException();
+        public class FrameAvailable implements SurfaceTexture.OnFrameAvailableListener {
+            public int index = -1;
+            FrameAvailable(int i) {
+                index = i;
             }
-            mSurface = surface;
+            @Override
+            public void onFrameAvailable(SurfaceTexture surfaceTexture) {
+                Log.d("display", "index:" + index + ",frame available!");
+                frameAvailableCounter++;
 
-            eglSetup();
-        }
+                displayFrameCount[index]++;
+                if(frameAvailableTime[index]==0) {
+                    frameAvailableTime[index] = System.currentTimeMillis();
+                }
 
-        /**
-         * Prepares EGL.  We want a GLES 2.0 context and a surface that supports recording.
-         */
-        private void eglSetup() {
-            mEGLDisplay = EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY);
-            if (mEGLDisplay == EGL14.EGL_NO_DISPLAY) {
-                throw new RuntimeException("unable to get EGL14 display");
-            }
-            int[] version = new int[2];
-            if (!EGL14.eglInitialize(mEGLDisplay, version, 0, version, 1)) {
-                throw new RuntimeException("unable to initialize EGL14");
+                if((System.currentTimeMillis()-frameAvailableTime[index])>=1000) {
+                    Log.d("FPS","Frame Available FPS:"+displayFrameCount[index]);
+                    displayFrameCount[index]=0;
+                    frameAvailableTime[index] = System.currentTimeMillis();
+                }
+
+                if(frameAvailableCounter==4) {
+                    frameAvailableCounter = 0;
+                    bNeedUpdate = true;
+                }
             }
 
-            // Configure EGL for recording and OpenGL ES 2.0.
-            int[] attribList = {
-                    EGL14.EGL_RED_SIZE, 8,
-                    EGL14.EGL_GREEN_SIZE, 8,
-                    EGL14.EGL_BLUE_SIZE, 8,
-                    EGL14.EGL_ALPHA_SIZE, 8,
-                    EGL14.EGL_RENDERABLE_TYPE, EGL14.EGL_OPENGL_ES2_BIT,
-                    EGL_RECORDABLE_ANDROID, 1,
-                    EGL14.EGL_NONE
-            };
-            //EGLConfig[] configs = new EGLConfig[1];
-            android.opengl.EGLConfig[] configs = new android.opengl.EGLConfig[1];
-            int[] numConfigs = new int[1];
-            EGL14.eglChooseConfig(mEGLDisplay, attribList, 0, configs, 0, configs.length,
-                    numConfigs, 0);
-            checkEglError("eglCreateContext RGB888+recordable ES2");
 
-            // Configure context for OpenGL ES 2.0.
-            int[] attrib_list = {
-                    EGL14.EGL_CONTEXT_CLIENT_VERSION, 2,
-                    EGL14.EGL_NONE
-            };
-            mEGLContext = EGL14.eglCreateContext(mEGLDisplay, configs[0], EGL14.EGL_NO_CONTEXT,
-                    attrib_list, 0);
-            checkEglError("eglCreateContext");
 
-            // Create a window surface, and attach it to the Surface we received.
-            int[] surfaceAttribs = {
-                    EGL14.EGL_NONE
-            };
-            mEGLSurface = EGL14.eglCreateWindowSurface(mEGLDisplay, configs[0], mSurface,
-                    surfaceAttribs, 0);
-            checkEglError("eglCreateWindowSurface");
         }
 
-        /**
-         * Discards all resources held by this class, notably the EGL context.  Also releases the
-         * Surface that was passed to our constructor.
-         */
-        public void release() {
-            if (mEGLDisplay != EGL14.EGL_NO_DISPLAY) {
-                EGL14.eglMakeCurrent(mEGLDisplay, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_SURFACE,
-                        EGL14.EGL_NO_CONTEXT);
-                EGL14.eglDestroySurface(mEGLDisplay, mEGLSurface);
-                EGL14.eglDestroyContext(mEGLDisplay, mEGLContext);
-                EGL14.eglReleaseThread();
-                EGL14.eglTerminate(mEGLDisplay);
-            }
 
-            mSurface.release();
-
-            mEGLDisplay = EGL14.EGL_NO_DISPLAY;
-            mEGLContext = EGL14.EGL_NO_CONTEXT;
-            mEGLSurface = EGL14.EGL_NO_SURFACE;
-
-            mSurface = null;
-        }
-
-        /**
-         * Makes our EGL context and surface current.
-         */
-        public void makeCurrent() {
-            EGL14.eglMakeCurrent(mEGLDisplay, mEGLSurface, mEGLSurface, mEGLContext);
-            checkEglError("eglMakeCurrent");
-        }
-
-        /**
-         * Calls eglSwapBuffers.  Use this to "publish" the current frame.
-         */
-        public boolean swapBuffers() {
-            boolean result = EGL14.eglSwapBuffers(mEGLDisplay, mEGLSurface);
-            checkEglError("eglSwapBuffers");
-            return result;
-        }
-
-        /**
-         * Sends the presentation time stamp to EGL.  Time is expressed in nanoseconds.
-         */
-        public void setPresentationTime(long nsecs) {
-            EGLExt.eglPresentationTimeANDROID(mEGLDisplay, mEGLSurface, nsecs);
-            checkEglError("eglPresentationTimeANDROID");
-        }
-
-        /**
-         * Checks for EGL errors.  Throws an exception if one is found.
-         */
-        private void checkEglError(String msg) {
-            int error;
-            if ((error = EGL14.eglGetError()) != EGL14.EGL_SUCCESS) {
-                throw new RuntimeException(msg + ": EGL error: 0x" + Integer.toHexString(error));
-            }
-        }
     }
 
 }
