@@ -28,21 +28,24 @@ public class MediaPlayerController {
 
     }
 
-    public boolean DisplayIfItCan() {
+    public boolean[] DisplayIfItCan() {
 
+        boolean[] bCanDisplay = new boolean[4];
         final long time = System.currentTimeMillis();
 
         for(int i=0;i<number_of_play;i++) {
             if(!mps[i].canDisplay(time)) {
-                return false;
+                bCanDisplay[i] = false;
+            } else {
+                bCanDisplay[i] = true;
             }
         }
 
         for(int i=0;i<number_of_play;i++) {
-            final int j = i;
-            mps[j].display(time);
+            if(bCanDisplay[i])
+                mps[i].display();
         }
-        return true;
+        return bCanDisplay;
     }
 
     public void setDataSources(String[] ss) throws IOException {
@@ -58,11 +61,30 @@ public class MediaPlayerController {
     }
 
     public long startTime = 0;
+    boolean bTestSync = true;
     public void start() {
         startTime = System.currentTimeMillis();
         ShareClock.shareClock.setStartTime(startTime);
         for(int i=0;i<number_of_play;i++) {
-            mps[i].start();
+
+            final int j = i;
+            new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    if(bTestSync) {
+                        try {
+                            Thread.sleep(j * 100);
+                        } catch (InterruptedException e) {
+                            e.printStackTrace();
+                        }
+                    }
+                    mps[j].start();
+
+                }
+            }).start();
+
+
+
         }
     }
 

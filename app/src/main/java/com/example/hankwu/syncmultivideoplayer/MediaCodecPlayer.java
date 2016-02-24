@@ -25,30 +25,15 @@ public class MediaCodecPlayer {
     boolean bStart = false;
     boolean bPause = false;
     Semaphore mutex = new Semaphore(1);
-    int timeoutUs = 1000000; // 1 second timeout
-    public boolean goDone = false;
-
     int index = -1;
-
     // use for display
     Queue<Integer> displayQueue = new LinkedList<>();
     Queue<Long> displayTimeStampQueue = new LinkedList<>();
-    long startTime = -1;
     long firstTime = -1;
-    HandlerThread handlerThread = null;
-    Handler displayHandler = null;
-
-    // use for test only
-    boolean bWeakPlatformTest = false;
-    boolean bNoTimeStamp = false;
-
-    public boolean onGo = false;
-
 
     public void setIndex(int ii) {
         index = ii;
     }
-
 
     public void setDataSource(String p) {
         sourcePath = p;
@@ -59,12 +44,6 @@ public class MediaCodecPlayer {
     }
 
     public void prepare() throws IOException {
-
-        handlerThread = new HandlerThread("DisplayHandler");
-        handlerThread.start();
-
-        displayHandler = new Handler(handlerThread.getLooper());
-
         mediaExtractor = new MediaExtractor();
         mediaExtractor.setDataSource(sourcePath);
 
@@ -77,15 +56,9 @@ public class MediaCodecPlayer {
             if (mine_type.startsWith("video/")) {
                 // Must select the track we are going to get data by readSampleData()
                 mediaExtractor.selectTrack(i);
-                // Set required key for MediaCodec in decoder mode
-                // Check http://developer.android.com/reference/android/media/MediaFormat.html
-//                format.setInteger(MediaFormat.KEY_CAPTURE_RATE, 24);
-//                format.setInteger(MediaFormat.KEY_PUSH_BLANK_BUFFERS_ON_STOP, 1);
                 break;
             }
         }
-
-        // TODO: Check if valid track has been selected by selectTrack()
 
         decoder = MediaCodec.createDecoderByType(mine_type);
         decoder.configure(format, surface, null, 0 /* 0:decoder 1:encoder */);
@@ -93,38 +66,57 @@ public class MediaCodecPlayer {
         decoder.setCallback(new DecoderCallback());
     }
 
-    public void display(long currentTime) {
+    public void display() {
+        decoder.releaseOutputBuffer(displayQueue.poll(), true);
+    }
 
-        if(firstTime==-1) {
-            firstTime = displayTimeStampQueue.peek();
-            ShareClock.shareClock.setStartTime(currentTime);
-            decoder.releaseOutputBuffer(displayQueue.poll(), displayTimeStampQueue.poll());
+
+    public boolean checkNext(long currentTime) {
+        if(!displayTimeStampQueue.isEmpty()) {
+            return false;
+        }
+
+        long delta_display_time = displayTimeStampQueue.peek() - firstTime;
+        long delta_startTime = currentTime - ShareClock.shareClock.getStartTime();
+        long delayTime = delta_display_time - delta_startTime;
+
+        if(delayTime>0) {
+            return false;
         } else {
-            long time = displayTimeStampQueue.poll();
-            decoder.releaseOutputBuffer(displayQueue.poll(), time);
+            // release old frame
+            // because the next frame need play immediately.
+            decoder.releaseOutputBuffer(displayQueue.poll(), false);
+            displayTimeStampQueue.poll();
+            return true;
         }
 
     }
 
     public boolean canDisplay(long currentTime) {
         if(firstTime==-1) {
-            return !displayQueue.isEmpty();
+            if(displayQueue.isEmpty()) {
+                return false;
+            }
+            firstTime = displayTimeStampQueue.poll();
+            return true;
         }
 
         if(!displayQueue.isEmpty()) {
             long delta_display_time = displayTimeStampQueue.peek() - firstTime;
             long delta_startTime = currentTime - ShareClock.shareClock.getStartTime();
             long delayTime = delta_display_time - delta_startTime;
-
             if(delayTime>0) {
                 return false;
             } else {
+                displayTimeStampQueue.poll();
+                while(checkNext(currentTime)) {
+
+                }
                 return true;
             }
         } else {
             return false;
         }
-
     }
 
     public class DecoderCallback extends MediaCodec.Callback {
@@ -137,7 +129,6 @@ public class MediaCodecPlayer {
                     e.printStackTrace();
                 }
             }
-
 
             ByteBuffer inputBuffer = decoder.getInputBuffer(i);
             int sampleSize = mediaExtractor.readSampleData(inputBuffer, 0);
@@ -184,6 +175,14 @@ public class MediaCodecPlayer {
             decoder.start();
         }
     }
+
+    public void unpause() {
+        if(bPause) {
+            bPause = false;
+            mutex.release();
+        }
+    }
+
 
     public void stop() {
         bStart = false;

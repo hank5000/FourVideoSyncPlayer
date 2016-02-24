@@ -168,21 +168,32 @@ class VideoSurfaceView extends GLSurfaceView {
 
         boolean bNeedUpdate = false;
         boolean bNeedWaitUpdate = false;
+        boolean[] bNeedWaitUpdates = new boolean[4];
+        boolean[] bNeedUpdates = new boolean[4];
+
+
         @Override
         public void onDrawFrame(GL10 glUnused) {
 
-            if(bNeedWaitUpdate) {
-                while(!bNeedUpdate)
-                {
+            if(bNeedWaitUpdates[0] || bNeedWaitUpdates[1] || bNeedWaitUpdates[2] || bNeedWaitUpdates[3]) {
+                for(int i=0;i<4;i++) {
+                    if(bNeedWaitUpdates[i]) {
+                        while (!bNeedUpdates[i]) {
 
+                        }
+                    }
                 }
+
                 for (int i=0;i< number_of_play;i++) {
-                    mSurfaceTextures[i].updateTexImage();
-                    mSurfaceTextures[i].getTransformMatrix(mSTMatrix);
-                    mSurfaceTextures[i].getTimestamp();
+                    if(bNeedUpdates[i]) {
+                        mSurfaceTextures[i].updateTexImage();
+                        mSurfaceTextures[i].getTransformMatrix(mSTMatrix);
+                        //mSurfaceTextures[i].getTimestamp();
+                    }
+                    bNeedUpdates[i] = false;
+                    bNeedWaitUpdates[i] = false;
                 }
                 bNeedWaitUpdate = false;
-
 
                 if(bShowFPS) {
                     Counter++;
@@ -196,7 +207,6 @@ class VideoSurfaceView extends GLSurfaceView {
                 }
 
                 for (int i = 0; i < number_of_play; i++) {
-
                     GLES20.glUseProgram(mProgram);
                     checkGlError("glUseProgram");
 
@@ -228,15 +238,11 @@ class VideoSurfaceView extends GLSurfaceView {
                 }
                 GLES20.glFinish();
 
-
             } else {
                 //
                 // trigger display
                 //
-                if(MediaPlayerController.mediaPlayerControllerSingleton.DisplayIfItCan()) {
-
-                    bNeedWaitUpdate = true;
-                }
+                bNeedWaitUpdates = MediaPlayerController.mediaPlayerControllerSingleton.DisplayIfItCan();
             }
 
 
@@ -262,7 +268,7 @@ class VideoSurfaceView extends GLSurfaceView {
             }
             Log.d("HANK","index:"+j+" is available!");
         }
-
+        public boolean bStartWait = true;
         @Override
         public void onSurfaceCreated(GL10 glUnused, EGLConfig config) {
             mProgram = createProgram(mVertexShader, mFragmentShader);
@@ -323,6 +329,14 @@ class VideoSurfaceView extends GLSurfaceView {
                 MediaPlayerController.mediaPlayerControllerSingleton.setDataSources(path);
                 MediaPlayerController.mediaPlayerControllerSingleton.prepare();
                 MediaPlayerController.mediaPlayerControllerSingleton.start();
+                if(bStartWait) {
+                    try {
+                        Thread.sleep(1000);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                }
+
             } catch (IOException e) {
                 Log.d("HANK",e.toString());
                 e.printStackTrace();
@@ -414,6 +428,7 @@ class VideoSurfaceView extends GLSurfaceView {
                     frameAvailableCounter = 0;
                     bNeedUpdate = true;
                 }
+                bNeedUpdates[index] = true;
             }
 
 
